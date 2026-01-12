@@ -1,0 +1,201 @@
+import requests
+import pandas as pd
+import dash
+from dash import dcc, html, dash_table
+from dash.dependencies import Input, Output
+import plotly.express as px
+import plotly.graph_objects as go
+
+# Se guardan las variables que se usaran en la api y se extrae la informacion
+URL = "https://www.datos.gov.co/resource/m8fd-ahd9.json"
+params = {"$limit": 1000000}
+
+response = requests.get(URL, params=params)
+response.raise_for_status()
+
+data = response.json()
+df = pd.DataFrame(data)
+
+# Las sisugientes lineas son para guardar la fecha 
+posibles_fechas = ["fecha_hecho", "fecha", "fecha_del_hecho"]
+col_fecha = next((c for c in posibles_fechas if c in df.columns), None)
+
+if col_fecha is None:
+    raise Exception("(-) No se encontró columna de fecha en el dataset")
+
+df.rename(columns={col_fecha: "fecha_hecho"}, inplace=True)
+df["fecha_hecho"] = pd.to_datetime(df["fecha_hecho"], errors="coerce")
+df["anio"] = df["fecha_hecho"].dt.year
+df["mes"] = df["fecha_hecho"].dt.month
+df["dia"] = df["fecha_hecho"].dt.day
+df["departamento"] = df["departamento"].str.upper()
+df = df.dropna(subset=["anio", "mes", "dia", "departamento"])
+df["anio"] = df["anio"].astype(int)
+df["mes"] = df["mes"].astype(int)
+df["dia"] = df["dia"].astype(int)
+anios_disponibles = sorted(df["anio"].unique())
+
+# las siguientes son coordenadas de departamentos del colombia
+centroides_departamentos = {
+    "AMAZONAS": [-69.9333, -1.4433],
+    "ANTIOQUIA": [-75.5636, 6.2518],
+    "ARAUCA": [-70.7333, 7.0833],
+    "ATLANTICO": [-75.5247, 10.4230],
+    "BOLIVAR": [-75.5000, 10.4000],
+    "BOYACA": [-73.3500, 5.5500],
+    "CALDAS": [-75.5138, 5.0703],
+    "CAQUETA": [-75.6667, 1.5833],
+    "CASANARE": [-71.7333, 5.3667],
+    "CAUCA": [-76.0000, 2.5000],
+    "CESAR": [-73.2500, 10.9833],
+    "CHOCO": [-76.6413, 5.6936],
+    "CORDOBA": [-75.8800, 8.7700],
+    "CUNDINAMARCA": [-74.0758, 4.5981],
+    "GUAINIA": [-69.7500, 2.5667],
+    "GUAVIARE": [-72.6333, 2.5667],
+    "HUILA": [-75.2800, 2.9300],
+    "LA GUAJIRA": [-72.9000, 11.5400],
+    "MAGDALENA": [-74.2500, 10.5000],
+    "META": [-73.6140, 4.1560],
+    "NARIÑO": [-77.2719, 1.2141],
+    "NORTE DE SANTANDER": [-72.4967, 7.8891],
+    "PUTUMAYO": [-76.5417, 0.1521],
+    "QUINDIO": [-75.7688, 4.5617],
+    "RISARALDA": [-75.6946, 4.8517],
+    "SAN ANDRES Y PROVIDENCIA": [-81.7000, 12.5847],
+    "SANTANDER": [-73.1198, 7.1254],
+    "SUCRE": [-75.3977, 9.3070],
+    "TOLIMA": [-75.2322, 4.4359],
+    "VALLE DEL CAUCA": [-76.5225, 3.4372],
+    "VAUPES": [-70.2500, 1.5833],
+    "VICHADA": [-69.1000, 4.6000],
+}
+
+# Posteriormente creamos el dashboard
+app = dash.Dash(__name__)
+app.layout = html.Div(
+    style={"width": "95%", "margin": "auto"},
+    children=[
+        html.H1("Homicidios en Colombia (filtros por fecha)", style={"textAlign": "center"}),
+        html.Label("Seleccione el año:"),
+        dcc.Dropdown(
+            id="select-anio",
+            options=[{"label": str(a), "value": a} for a in anios_disponibles],
+            value=anios_disponibles[0],
+            clearable=False
+        ),
+        html.Label("Seleccione el mes:"),
+        dcc.Dropdown(id="select-mes", clearable=False),
+        html.Label("Seleccione el día:"),
+        dcc.Dropdown(id="select-dia", clearable=False),
+        html.Hr(),
+        html.H3("Tabla de homicidios filtrada"),
+        dash_table.DataTable(
+            id="tabla-homicidios",
+            page_size=10,
+            style_table={"overflowX": "auto"},
+            style_cell={"textAlign": "left", "fontFamily": "Arial", "fontSize": "12px"},
+        ),
+        html.Hr(),
+        html.H3("Homicidios por departamento"),
+        dcc.Graph(id="grafica-barras"),
+        html.Hr(),
+        html.H3("Mapa de homicidios por departamento con puntos proporcionales"),
+        dcc.Graph(id="mapa-colombia")
+    ]
+)
+
+# En las siguientes lineas de codigo se crean las callback
+@app.callback(
+    Output("select-mes", "options"),
+    Output("select-mes", "value"),
+    Input("select-anio", "value")
+)
+def actualizar_meses(anio_seleccionado):
+    meses_disponibles = sorted(df[df["anio"] == anio_seleccionado]["mes"].unique())
+    options = [{"label": m, "value": m} for m in meses_disponibles]
+    value = meses_disponibles[0] if meses_disponibles else None
+    return options, value
+
+@app.callback(
+    Output("select-dia", "options"),
+    Output("select-dia", "value"),
+    Input("select-anio", "value"),
+    Input("select-mes", "value")
+)
+def actualizar_dias(anio_seleccionado, mes_seleccionado):
+    dias_disponibles = sorted(df[(df["anio"] == anio_seleccionado) & (df["mes"] == mes_seleccionado)]["dia"].unique())
+    options = [{"label": d, "value": d} for d in dias_disponibles]
+    value = dias_disponibles[0] if dias_disponibles else None
+    return options, value
+
+# Callback de las graficas
+@app.callback(
+    [
+        Output("tabla-homicidios", "data"),
+        Output("tabla-homicidios", "columns"),
+        Output("grafica-barras", "figure"),
+        Output("mapa-colombia", "figure")
+    ],
+    Input("select-anio", "value"),
+    Input("select-mes", "value"),
+    Input("select-dia", "value")
+)
+def actualizar_dashboard(anio, mes, dia):
+    df_filtrado = df[(df["anio"] == anio) & (df["mes"] == mes) & (df["dia"] == dia)]
+    columnas = [{"name": c, "id": c} for c in df_filtrado.columns]
+    data_tabla = df_filtrado.to_dict("records")
+
+    # Gráfica de barras
+    conteo_departamento = df_filtrado.groupby("departamento").size().reset_index(name="cantidad_homicidios")
+
+    fig_barras = px.bar(
+        conteo_departamento,
+        x="departamento",
+        y="cantidad_homicidios",
+        title=f"Homicidios por departamento en {anio}-{mes:02d}-{dia:02d}",
+        labels={"departamento": "Departamento", "cantidad_homicidios": "Cantidad de homicidios"}
+    )
+    fig_barras.update_layout(template="plotly_white", xaxis_tickangle=-45)
+
+    # Mapa de Colombia con puntos proporcionales
+    if conteo_departamento.empty:
+        fig_mapa = go.Figure()
+    else:
+        lons, lats, texts, sizes = [], [], [], []
+        max_homicidios = conteo_departamento["cantidad_homicidios"].max()
+        for _, row in conteo_departamento.iterrows():
+            depto = row['departamento']
+            cantidad = int(row['cantidad_homicidios'])
+            if depto in centroides_departamentos and cantidad > 0:
+                lon, lat = centroides_departamentos[depto]
+                lons.append(lon)
+                lats.append(lat)
+                texts.append(f"{depto}<br>{cantidad}")
+                # Tamaño proporcional
+                size = 8 + (cantidad / max_homicidios * 32)
+                sizes.append(size)
+
+        fig_mapa = go.Figure(go.Scattermapbox(
+            lon=lons,
+            lat=lats,
+            mode='markers+text',
+            marker=go.scattermapbox.Marker(size=sizes, color='red'),
+            text=texts,
+            textposition="bottom center"
+        ))
+
+    fig_mapa.update_layout(
+        mapbox_style="open-street-map",
+        mapbox_center={"lat": 4.5, "lon": -74.0},
+        mapbox_zoom=4.5,
+        title=f"Homicidios en Colombia ({anio}-{mes:02d}-{dia:02d})",
+        font=dict(family="Courier New, monospace", size=12, color="black"),
+        margin={"r":0,"t":40,"l":0,"b":0}
+    )
+
+    return data_tabla, columnas, fig_barras, fig_mapa
+
+# El main de ejecucion
+if __name__ == "__main__":
+    app.run(debug=True)
