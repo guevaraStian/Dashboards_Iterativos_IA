@@ -8,9 +8,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from sklearn.linear_model import LinearRegression
 
-# =========================
-# CONSULTA A LA API
-# =========================
+# Se ingresan variables de la base de datos api
 URL = "https://www.datos.gov.co/resource/m8fd-ahd9.json"
 params = {"$limit": 10000000}
 
@@ -18,9 +16,7 @@ response = requests.get(URL, params=params)
 response.raise_for_status()
 df = pd.DataFrame(response.json())
 
-# =========================
-# LIMPIEZA DE DATOS
-# =========================
+# Se organizan los datos que vienen del api
 df.rename(columns={"fecha_hecho": "fecha_hecho"}, inplace=True)
 df["fecha_hecho"] = pd.to_datetime(df["fecha_hecho"], errors="coerce")
 df["anio"] = df["fecha_hecho"].dt.year
@@ -31,9 +27,7 @@ df["anio"] = df["anio"].astype(int)
 anios_disponibles = sorted(df["anio"].unique())
 departamentos_colombia = sorted(df["departamento"].unique())
 
-# =========================
-# CENTROIDES
-# =========================
+# Se indica la ubicacion de cada departamento en coordenadas
 centroides_departamentos = {
     "ANTIOQUIA": [-75.56, 6.25],
     "CUNDINAMARCA": [-74.07, 4.59],
@@ -48,9 +42,7 @@ centroides_departamentos = {
     "BOGOTA D.C.": [-74.07, 4.71]
 }
 
-# =========================
-# PRONÓSTICO ML
-# =========================
+# Se calcula pronostico 2026 con machine learning
 def calcular_predicciones_2026():
     df_totales = df.groupby(["departamento", "anio"]).size().reset_index(name="homicidios")
     resultados = []
@@ -78,9 +70,7 @@ def calcular_predicciones_2026():
 
 df_predicciones = calcular_predicciones_2026()
 
-# =========================
-# DASHBOARD
-# =========================
+# Se crea el dashboard
 app = dash.Dash(__name__)
 fecha_actual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
@@ -151,9 +141,7 @@ app.layout = html.Div(
     ]
 )
 
-# =========================
-# CALLBACK
-# =========================
+# Se crean los callback
 @app.callback(
     [
         Output("tabla-homicidios", "data"),
@@ -219,8 +207,6 @@ def actualizar_dashboard(anio):
         fig_mapa
     )
 
-# =========================
-# MAIN
-# =========================
+# A continuacion el main de ejecucion
 if __name__ == "__main__":
     app.run(debug=True)
