@@ -1,5 +1,5 @@
 
-<h1 style="font-size: 3em; color: #FF0000;">• DASHBOARD ITERATIVO BLUETOOTH CERCANOS </h1>
+<h1 style="font-size: 3em; color: #FF0000;">• DASHBOARD ITERATIVO WIFI CERCANOS </h1>
 
 
 ![Microsoft](https://img.shields.io/badge/Microsoft-0078D4?style=for-the-badge&logo=microsoft&logoColor=white) 
