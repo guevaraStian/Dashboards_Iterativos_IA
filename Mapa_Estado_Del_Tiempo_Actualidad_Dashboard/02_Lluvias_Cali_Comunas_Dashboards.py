@@ -42,7 +42,13 @@ comunas = {
 
 # Se consulta una base de datos de una api y se guardan los datos en variables
 def obtener_lluvia(lat, lon):
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&hourly=precipitation"
+    url = (
+    f"https://api.open-meteo.com/v1/forecast"
+    f"?latitude={lat}"
+    f"&longitude={lon}"
+    f"&current_weather=true"
+    f"&hourly=precipitation"
+    f"&timezone=auto")
     try:
         response = requests.get(url, timeout=5)  # timeout 5 segundos
         data = response.json()
@@ -134,4 +140,4 @@ app.layout = html.Div(
 )
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=2345, debug=True)
